@@ -1,6 +1,10 @@
 package hasm
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/leonhfr/nand2tetris/src/hasm/symboltable"
+)
 
 type CommandType int
 
@@ -8,7 +12,6 @@ const (
 	A_COMMAND CommandType = iota
 	C_COMMAND
 	L_COMMAND
-	COMMENT
 )
 
 type HasmFile struct {
@@ -17,45 +20,41 @@ type HasmFile struct {
 }
 
 type Command interface {
-	Encode() string
+	Handle(st *symboltable.SymbolTable) (string, error)
 }
 
 type CommandList []Command
 
-type ACommand struct {
-	Symbol string `json:"symbol"`
+func (h *HasmFile) FirstPass(st *symboltable.SymbolTable) error {
+	for _, command := range h.Commands {
+		switch command.(type) {
+		case LCommand:
+			_, err := command.Handle(st)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-func NewA(symbol string) ACommand {
-	return ACommand{symbol}
-}
-
-func (a ACommand) Encode() string {
-	return a.Symbol
-}
-
-type CCommand struct {
-	Dest string `json:"dest"`
-	Comp string `json:"comp"`
-	Jump string `json:"jump"`
-}
-
-func NewC(dest, comp, jump string) CCommand {
-	return CCommand{dest, comp, jump}
-}
-
-func (c CCommand) Encode() string {
-	return fmt.Sprintf("%q=%q;%q", c.Dest, c.Comp, c.Jump)
-}
-
-type LCommand struct {
-	Symbol string `json:"symbol"`
-}
-
-func NewL(symbol string) LCommand {
-	return LCommand{symbol}
-}
-
-func (l LCommand) Encode() string {
-	return l.Symbol
+func (h *HasmFile) SecondPass(st *symboltable.SymbolTable) (string, error) {
+	var output string
+	for _, command := range h.Commands {
+		switch command.(type) {
+		case ACommand:
+			a, err := command.Handle(st)
+			if err != nil {
+				return output, err
+			}
+			output += fmt.Sprintln(a)
+		case CCommand:
+			c, err := command.Handle(st)
+			if err != nil {
+				return output, err
+			}
+			output += fmt.Sprintln(c)
+		}
+	}
+	return output, nil
 }

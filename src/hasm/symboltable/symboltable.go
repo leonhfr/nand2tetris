@@ -84,3 +84,13 @@ func (st *SymbolTable) Get(symbol string) (int, error) {
 	}
 	return address, nil
 }
+
+func (st *SymbolTable) String() string {
+	formatted := ""
+	formatted += fmt.Sprintln("Symbol table:")
+	for k, v := range st.entries {
+		formatted += fmt.Sprintln(k, ":", v)
+	}
+	formatted += fmt.Sprint("Next:", st.next)
+	return formatted
+}

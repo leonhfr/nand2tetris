@@ -28,6 +28,7 @@ func New(name, input string) *Lexer {
 		Input:  input,
 		State:  LexStart,
 		Tokens: make(chan lexertoken.Token, 2),
+		// TODO: find out why only buffered channel work
 	}
 }
 

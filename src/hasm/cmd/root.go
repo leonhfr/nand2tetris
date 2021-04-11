@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/leonhfr/nand2tetris/src/hasm/parser"
+	"github.com/leonhfr/nand2tetris/src/hasm/symboltable"
 )
 
 var config = NewConfig()
@@ -29,6 +30,20 @@ func Execute() error {
 		return err
 	}
 	fmt.Println(string(pretty))
+	st := symboltable.New()
+
+	err = parsed.FirstPass(st)
+	if err != nil {
+		return err
+	}
+
+	output, err := parsed.SecondPass(st)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(output)
+
 	return nil
 }
 
