@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 
 	"github.com/leonhfr/nand2tetris/src/hasm/parser"
@@ -15,18 +17,18 @@ func Execute() error {
 	if config.input == "" {
 		return fmt.Errorf("input file not defined")
 	}
-	p, err := parser.New(config.input)
+	bytes, err := ioutil.ReadFile(config.input)
 	if err != nil {
 		return err
 	}
-	err = p.Parse()
+	content := string(bytes)
+
+	parsed := parser.Parse(config.input, content)
+	pretty, err := json.MarshalIndent(parsed, "", "  ")
 	if err != nil {
 		return err
 	}
-	// st := symboltable.New()
-	// comds := p.Commands()
-	// for _, c := range  {
-	// }
+	fmt.Println(string(pretty))
 	return nil
 }
 
