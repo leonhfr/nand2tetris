@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -18,6 +17,9 @@ func Execute() error {
 	if config.input == "" {
 		return fmt.Errorf("input file not defined")
 	}
+	if config.output == "" {
+		return fmt.Errorf("output file not defined")
+	}
 	bytes, err := ioutil.ReadFile(config.input)
 	if err != nil {
 		return err
@@ -25,11 +27,11 @@ func Execute() error {
 	content := string(bytes)
 
 	parsed := parser.Parse(config.input, content)
-	pretty, err := json.MarshalIndent(parsed, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(pretty))
+	// pretty, err := json.MarshalIndent(parsed, "", "  ")
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Println(string(pretty))
 	st := symboltable.New()
 
 	err = parsed.FirstPass(st)
@@ -42,9 +44,21 @@ func Execute() error {
 		return err
 	}
 
-	fmt.Println(output)
+	// fmt.Println(output)
+
+	writeFile(output)
 
 	return nil
+}
+
+func writeFile(content string) error {
+	f, err := os.Create(config.output)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(content)
+	return err
 }
 
 func init() {

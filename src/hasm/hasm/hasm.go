@@ -26,13 +26,16 @@ type Command interface {
 type CommandList []Command
 
 func (h *HasmFile) FirstPass(st *symboltable.SymbolTable) error {
+	position := 0
 	for _, command := range h.Commands {
 		switch command.(type) {
 		case LCommand:
-			_, err := command.Handle(st)
-			if err != nil {
-				return err
+			label := command.(LCommand).Symbol
+			if !st.Has(label) {
+				st.Insert(label, position)
 			}
+		default:
+			position++
 		}
 	}
 	return nil

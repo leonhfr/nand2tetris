@@ -64,6 +64,11 @@ func Parse(fileName, input string) hasm.HasmFile {
 			output.Commands = append(output.Commands, i)
 		}
 	}
+	if dest != "" && comp != "" {
+		i := hasm.NewC(dest, comp, "")
+		output.Commands = append(output.Commands, i)
+		dest, comp = "", ""
+	}
 
 	return output
 }

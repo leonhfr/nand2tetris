@@ -17,10 +17,6 @@ func LexDestOrComp(lexer *Lexer) LexFn {
 			return LexSemiColon
 		}
 
-		// if lexer.IsNext(lexertoken.NEWLINE) || lexer.IsNext(lexertoken.CARRIAGE_RETURN) {
-		// 	return lexer.Errorf(errors.LEXER_ERROR_UNEXPECTED_NEWLINE)
-		// }
-
 		lexer.Inc()
 
 		if lexer.IsEOF() {
@@ -54,7 +50,7 @@ func LexComp(lexer *Lexer) LexFn {
 		}
 
 		if lexer.IsNext(lexertoken.NEWLINE) || lexer.IsNext(lexertoken.CARRIAGE_RETURN) {
-			lexer.Emit(lexertoken.TOKEN_C_JUMP)
+			lexer.Emit(lexertoken.TOKEN_C_COMP)
 			return LexStart
 		}
 
