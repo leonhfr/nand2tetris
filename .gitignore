@@ -18,3 +18,4 @@
 # nand2tetris source and artefacts
 nand2tetris
 *.out
+*.hack
