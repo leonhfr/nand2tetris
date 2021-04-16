@@ -43,8 +43,13 @@ func (p *Parser) parseCommand(line string) {
 		return
 	}
 
-	arg1 := parts[1]
-	arg2, _ := strconv.Atoi(parts[2])
+	arg1, arg2 := "", 0
+	if len(parts) > 1 {
+		arg1 = parts[1]
+	}
+	if len(parts) > 2 {
+		arg2, _ = strconv.Atoi(parts[2])
+	}
 
 	switch c {
 	case "push":
@@ -58,6 +63,43 @@ func (p *Parser) parseCommand(line string) {
 		p.out <- &bytecode.Command{
 			Original: line,
 			Type:     bytecode.C_POP,
+			Arg1:     arg1,
+			Arg2:     arg2,
+		}
+	case "label":
+		p.out <- &bytecode.Command{
+			Original: line,
+			Type:     bytecode.C_LABEL,
+			Arg1:     arg1,
+		}
+	case "goto":
+		p.out <- &bytecode.Command{
+			Original: line,
+			Type:     bytecode.C_GOTO,
+			Arg1:     arg1,
+		}
+	case "if-goto":
+		p.out <- &bytecode.Command{
+			Original: line,
+			Type:     bytecode.C_IF,
+			Arg1:     arg1,
+		}
+	case "function":
+		p.out <- &bytecode.Command{
+			Original: line,
+			Type:     bytecode.C_FUNCTION,
+			Arg1:     arg1,
+			Arg2:     arg2,
+		}
+	case "return":
+		p.out <- &bytecode.Command{
+			Original: line,
+			Type:     bytecode.C_RETURN,
+		}
+	case "call":
+		p.out <- &bytecode.Command{
+			Original: line,
+			Type:     bytecode.C_CALL,
 			Arg1:     arg1,
 			Arg2:     arg2,
 		}

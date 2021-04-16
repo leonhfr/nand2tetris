@@ -8,26 +8,37 @@ import (
 
 type Translator struct {
 	filename string
+	entry    bool
 	in       <-chan *bytecode.Command
 	out      chan string
 	errors   chan error
 	labels   int
 }
 
-func New(filename string, in <-chan *bytecode.Command, out chan string, errors chan error) *Translator {
+func New(filename string, entry bool, in <-chan *bytecode.Command, out chan string, errors chan error) *Translator {
 	labels := 0
-	return &Translator{filename, in, out, errors, labels}
+	return &Translator{filename, entry, in, out, errors, labels}
 }
 
 func (t *Translator) Translate() {
+	if t.entry {
+		t.emitEntry()
+	}
 	for command := range t.in {
 		t.translate(command)
 	}
 	close(t.out)
 }
 
+func (t *Translator) emitEntry() {
+	t.emitComment("Entry commands")
+	t.emitConstantToD(256)
+	t.emitDToAddress("SP")
+	t.emitCall("Sys.init", 0)
+}
+
 func (t *Translator) translate(command *bytecode.Command) {
-	t.emitComment(command)
+	t.emitComment(command.Original)
 	switch command.Type {
 	case bytecode.C_ADD:
 		t.emitComputeTwoArgs("D+M")
@@ -51,6 +62,18 @@ func (t *Translator) translate(command *bytecode.Command) {
 		t.emitPush(command)
 	case bytecode.C_POP:
 		t.emitPop(command)
+	case bytecode.C_LABEL:
+		t.emitLabel(command.Arg1)
+	case bytecode.C_GOTO:
+		t.emitGoTo(command.Arg1)
+	case bytecode.C_IF:
+		t.emitIfGoTo(command.Arg1)
+	case bytecode.C_FUNCTION:
+		t.emitFunction(command.Arg1, command.Arg2)
+	case bytecode.C_CALL:
+		t.emitCall(command.Arg1, command.Arg2)
+	case bytecode.C_RETURN:
+		t.emitReturn()
 	}
 }
 
@@ -114,9 +137,7 @@ func (t *Translator) emitPop(command *bytecode.Command) {
 		// &R13 = D
 		t.emitStackDec()
 		t.emitStackToD()
-		t.emit("@R13")
-		t.emit("A=M")
-		t.emit("M=D")
+		t.emits("@R13", "A=M", "M=D")
 	case "constant":
 		t.errors <- fmt.Errorf("pop constant is not supported")
 	case "static":
@@ -134,9 +155,7 @@ func (t *Translator) emitPop(command *bytecode.Command) {
 		// &R13 = D
 		t.emitStackDec()
 		t.emitStackToD()
-		t.emit("@R13")
-		t.emit("A=M")
-		t.emit("M=D")
+		t.emits("@R13", "A=M", "M=D")
 	case "pointer":
 		offset, err := pointerOffset(command.Arg2)
 		if err != nil {
@@ -149,6 +168,115 @@ func (t *Translator) emitPop(command *bytecode.Command) {
 	default:
 		t.errors <- fmt.Errorf("unknown segment name %v", command.Arg1)
 	}
+}
+
+func (t *Translator) emitLabel(label string) {
+	t.emit(fmt.Sprintf("(%v)", label))
+}
+
+func (t *Translator) emitLabelAddress(label string) {
+	t.emit(fmt.Sprintf("@%v", label))
+}
+
+func (t *Translator) emitGoTo(label string) {
+	t.emit(fmt.Sprintf("@%v", label))
+	t.emit("0;JMP")
+}
+
+func (t *Translator) emitIfGoTo(label string) {
+	t.emitStackDec()
+	t.emitStackToD()
+	t.emit(fmt.Sprintf("@%v", label))
+	t.emit("D;JNE")
+}
+
+func (t *Translator) emitFunction(name string, args int) {
+	t.emitLabel(fmt.Sprintf("CALL_FUNCTION_%v", name))
+	for i := args; i > 0; i-- {
+		t.emitConstantToD(0)
+		t.emitDToStack()
+		t.emitStackInc()
+	}
+}
+
+func (t *Translator) emitCall(name string, args int) {
+	returnAddress := fmt.Sprintf("CALL_RETURN_%v_%v", name, t.labels)
+
+	t.emitComment("call: store return address")
+	t.emitLabelAddress(returnAddress)
+	t.emit("D=A")
+	t.emitDToStack()
+	t.emitStackInc()
+
+	t.emitComment("call: store call frame")
+	t.emitAddressToD("LCL")
+	t.emitDToStack()
+	t.emitStackInc()
+	t.emitAddressToD("ARG")
+	t.emitDToStack()
+	t.emitStackInc()
+	t.emitAddressToD("THIS")
+	t.emitDToStack()
+	t.emitStackInc()
+	t.emitAddressToD("THAT")
+	t.emitDToStack()
+	t.emitStackInc()
+
+	t.emitComment("call: compute ARG")
+	t.emitAddressToD("SP")
+	t.emit("@5")
+	t.emit("D=D-A")
+	t.emit(fmt.Sprintf("@%v", args))
+	t.emit("D=D-A")
+	t.emitDToAddress("ARG")
+
+	t.emitComment("call: set up LCL")
+	t.emitAddressToD("SP")
+	t.emitDToAddress("LCL")
+
+	t.emitComment("call: jump to the function")
+	t.emitLabelAddress(fmt.Sprintf("CALL_FUNCTION_%v", name))
+	t.emit("0;JMP")
+
+	t.emitComment("call: return address")
+	t.emitLabel(returnAddress)
+
+	t.labels++
+}
+
+func (t *Translator) emitReturn() {
+	t.emitComment("return: store addresses of end of call frame and return")
+	t.emitAddressToD("LCL")
+	t.emitDToAddress("R13")
+	t.emits("@5", "A=D-A", "D=M")
+	t.emitDToAddress("R14")
+
+	t.emitComment("return: pop the return value to the start of the frame")
+	t.emitStackDec()
+	t.emitStackToD()
+	t.emits("@ARG", "A=M", "M=D")
+
+	t.emitComment("return: set SP to parent")
+	t.emits("@ARG", "D=M+1")
+	t.emitDToAddress("SP")
+
+	t.emitComment("return: restore the call frame")
+	t.emitAddressToD("R13")
+	t.emits("@1", "D=D-A", "A=D", "D=M", "@THAT", "M=D")
+
+	t.emitAddressToD("R13")
+	t.emits("@2", "D=D-A", "A=D", "D=M", "@THIS", "M=D")
+
+	t.emitAddressToD("R13")
+	t.emits("@3", "D=D-A", "A=D", "D=M", "@ARG", "M=D")
+
+	t.emitAddressToD("R13")
+	t.emits("@4", "D=D-A", "A=D", "D=M", "@LCL", "M=D")
+
+	t.emitComment("return: jump to return address")
+	t.emitAddressToD("R14")
+	t.emit("A=D")
+	t.emit("0;JMP")
 }
 
 func (t *Translator) emitStackInc() {
@@ -183,9 +311,7 @@ func (t *Translator) emitDToAddress(address string) {
 }
 
 func (t *Translator) emitDToStack() {
-	t.emit("@SP")
-	t.emit("A=M")
-	t.emit("M=D")
+	t.emits("@SP", "A=M", "M=D")
 }
 
 func (t *Translator) emitComputeOneArg(operation string) {
@@ -195,37 +321,46 @@ func (t *Translator) emitComputeOneArg(operation string) {
 }
 
 func (t *Translator) emitComputeTwoArgs(operation string) {
-	t.emit("@SP")
-	t.emit("AM=M-1")
-	t.emit("D=M")
-	t.emit("A=A-1")
+	t.emits("@SP", "AM=M-1", "D=M", "A=A-1")
 	t.emit(fmt.Sprintf("M=%v", operation))
 }
 
 func (t *Translator) emitComputeComparable(operation string) {
 	t.emitComputeTwoArgs("M-D")
 	t.emit("D=M")
-	t.emit(fmt.Sprintf("@%v.%v.%v", t.filename, operation, t.labels))
+
+	id := fmt.Sprintf("%v_%v_%v", operation, t.filename, t.labels)
+	start := fmt.Sprintf("START_%v", id)
+	end := fmt.Sprintf("END_%v", id)
+	t.emitLabelAddress(start)
 	t.emit(fmt.Sprintf("D;%v", operation))
 	t.emit("@SP")
 	t.emit("A=M-1")
 	t.emit("M=0") // false
-	t.emit(fmt.Sprintf("@%v.%v.%v.END", t.filename, operation, t.labels))
+	t.emitLabelAddress(end)
 	t.emit("0;JMP")
-	t.emit(fmt.Sprintf("(%v.%v.%v)", t.filename, operation, t.labels))
+
+	t.emitLabel(start)
 	t.emit("@SP")
 	t.emit("A=M-1")
 	t.emit("M=-1") // true
-	t.emit(fmt.Sprintf("(%v.%v.%v.END)", t.filename, operation, t.labels))
+	t.emitLabel(end)
+
 	t.labels++
 }
 
-func (t *Translator) emitComment(command *bytecode.Command) {
-	t.emit(fmt.Sprintf("// %v", command.Original))
+func (t *Translator) emitComment(comment string) {
+	t.emit(fmt.Sprintf("// %v", comment))
 }
 
 func (t *Translator) emit(line string) {
 	t.out <- line
+}
+
+func (t *Translator) emits(lines ...string) {
+	for _, line := range lines {
+		t.out <- line
+	}
 }
 
 func pointerOffset(offset int) (string, error) {

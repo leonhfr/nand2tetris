@@ -3,20 +3,47 @@ package filesystem
 import (
 	"bufio"
 	"os"
+	"path"
+	"path/filepath"
 )
 
 type Reader struct {
-	path   string
-	out    chan string
-	errors chan error
+	path      string
+	directory bool
+	out       chan string
+	errors    chan error
 }
 
-func NewReader(path string, out chan string, errors chan error) *Reader {
-	return &Reader{path, out, errors}
+func NewReader(path string, directory bool, out chan string, errors chan error) *Reader {
+	return &Reader{path, directory, out, errors}
 }
 
-func (r *Reader) Lines() {
-	file, err := os.Open(r.path)
+func (r *Reader) Read() {
+	defer close(r.out)
+
+	if !r.directory {
+		r.readFile(r.path)
+		return
+	}
+
+	var files []string
+	err := filepath.Walk(r.path, func(file string, info os.FileInfo, err error) error {
+		if path.Ext(file) == ".vm" {
+			files = append(files, file)
+		}
+		return nil
+	})
+	if err != nil {
+		r.errors <- err
+	}
+
+	for _, path := range files {
+		r.readFile(path)
+	}
+}
+
+func (r *Reader) readFile(path string) {
+	file, err := os.Open(path)
 	if err != nil {
 		r.errors <- err
 	}
@@ -29,7 +56,6 @@ func (r *Reader) Lines() {
 		r.out <- scanner.Text()
 	}
 
-	close(r.out)
 	r.errors <- scanner.Err()
 }
 
@@ -44,7 +70,7 @@ func NewWriter(path string, in <-chan string, errors chan error, done chan bool)
 	return &Writer{path, in, errors, done}
 }
 
-func (w *Writer) Lines() {
+func (w *Writer) Write() {
 	file, err := os.Create(w.path)
 	if err != nil {
 		w.errors <- err
@@ -60,40 +86,4 @@ func (w *Writer) Lines() {
 	w.done <- true
 	close(w.errors)
 	close(w.done)
-}
-
-func ReadLines2(path string, out chan string, errors chan error) {
-	file, err := os.Open(path)
-	if err != nil {
-		errors <- err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Split(bufio.ScanLines)
-
-	for scanner.Scan() {
-		out <- scanner.Text()
-	}
-
-	close(out)
-	errors <- scanner.Err()
-}
-
-func WriteLines2(path string, in <-chan string, errors chan error, done chan bool) {
-	file, err := os.Create(path)
-	if err != nil {
-		errors <- err
-	}
-	defer file.Close()
-
-	for line := range in {
-		_, err = file.WriteString(line + "\n")
-		if err != nil {
-			errors <- err
-		}
-	}
-	done <- true
-	close(errors)
-	close(done)
 }

@@ -26,15 +26,15 @@ func Execute() error {
 	errors := make(chan error)
 	done := make(chan bool)
 
-	r := filesystem.NewReader(config.input, lines, errors)
+	r := filesystem.NewReader(config.input, config.directory, lines, errors)
 	p := parser.New(lines, commands, errors)
-	t := translator.New(config.filename, commands, asm, errors)
+	t := translator.New(config.filename, config.directory, commands, asm, errors)
 	w := filesystem.NewWriter(config.output, asm, errors, done)
 
-	go r.Lines()
+	go r.Read()
 	go p.Parse()
 	go t.Translate()
-	go w.Lines()
+	go w.Write()
 
 	for {
 		select {
@@ -56,14 +56,31 @@ func init() {
 	v := flag.Bool("version", versionDefault, versionUsage)
 	flag.Parse()
 
-	ext := path.Ext(config.input)
-	base := filepath.Base(config.input)
-	config.output = config.input[0:len(config.input)-len(ext)] + ".asm"
-	config.filename = base[0 : len(base)-len(ext)]
-
 	if *v {
 		version()
+		return
 	}
+
+	s, err := os.Stat(config.input)
+	if err != nil {
+		panic(err)
+	}
+
+	ext := path.Ext(config.input)
+	base := filepath.Base(config.input)
+	config.filename = base[0 : len(base)-len(ext)]
+
+	if s.IsDir() {
+		config.directory = true
+		config.output = path.Join(config.input, base+".asm")
+		return
+	}
+
+	if ext != ".vm" {
+		panic(fmt.Errorf("input is neither a directory nor a vm file"))
+	}
+
+	config.output = config.input[0:len(config.input)-len(ext)] + ".asm"
 }
 
 func usage() {

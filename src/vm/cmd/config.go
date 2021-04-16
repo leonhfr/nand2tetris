@@ -13,10 +13,11 @@ const (
 
 // A Config represents a vm configuration.
 type Config struct {
-	version  string // Current vm version
-	input    string // Input .vm file path
-	output   string // Output .asm file path
-	filename string // File name
+	version   string // Current vm version
+	input     string // Input path
+	output    string // Output .asm file path
+	filename  string // File name
+	directory bool   // Input is a directory
 }
 
 // NewConfig creates a new Config.
