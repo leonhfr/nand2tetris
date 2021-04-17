@@ -17,5 +17,6 @@
 
 # nand2tetris source and artefacts
 nand2tetris
+/spec/vm/**/*.asm
 *.out
 *.hack
